@@ -254,6 +254,17 @@ void processOBD(CBuffer* buffer)
     }
     if (tier > 1) break;
   }
+  int MAF = 0;
+  int VSS = 0;
+  float MPG = 0;
+  if (obd.readPID(PID_MAF_FLOW, MAF)) {
+    if (obd.readPID(PID_SPEED, VSS)) {
+      MPG = 7107 * VSS;
+      MPG = MPG / MAF ;
+      MPG = MPG / 10;
+      buffer->add(PID_MPG, MPG);
+    }
+  }
   int kph = obdData[0].value;
   if (kph >= 1) lastMotionTime = millis();
 }
