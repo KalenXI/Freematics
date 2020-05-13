@@ -260,7 +260,7 @@ void processOBD(CBuffer* buffer)
   if (obd.readPID(PID_MAF_FLOW, MAF)) {
     if (obd.readPID(PID_SPEED, VSS)) {
       MPG = 7107 * VSS;
-      MPG = MPG / MAF ;
+      MPG = MPG / (MAF * 100) ;
       MPG = MPG / 10;
       buffer->add(PID_MPG, MPG);
     }
