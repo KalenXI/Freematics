@@ -298,12 +298,22 @@ var TRIPS = {
 	},
 	loadChart: function(pids)
 	{
+		function sortFunction(a, b) {
+			if (a[0] === b[0]) {
+				return 0;
+			}
+			else {
+				return (a[0] < b[0]) ? -1 : 1;
+			}
+		}
+		
 		var offset = this.startTimeEpoc - this.startDeviceTick;
 		var names = [];
 		this.series = [];
 		for (var i = 0; i < pids.length; i++) {
 			var series = transport.getJSON(serverURL + "data?devid=" + USER.devid + "&tripid=" + this.tripID + "&offset=" + offset + "&pid=" + pids[i]);
 			if (series) {
+				series.sort(sortFunction);
 				this.series.push(series);
 				names.push(PID.getName(pids[i]));
 			}
