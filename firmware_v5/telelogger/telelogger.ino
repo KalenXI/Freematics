@@ -285,7 +285,7 @@ bool processGPS(CBuffer* buffer)
 #endif
   }
 
-  if (!gd || lastGPStime == gd->time) return false;
+  if (!gd || lastGPStime == gd->time || gd->date == 0) return false;
 
   float kph = gd->speed * 1.852f;
   if (kph >= 2) lastMotionTime = millis();
@@ -383,8 +383,9 @@ void processMEMS(CBuffer* buffer)
 #endif
       if (temp != deviceTemp) {
         deviceTemp = temp;
-        buffer->add(PID_DEVICE_TEMP, (int)(temp * 10));
+        buffer->add(PID_DEVICE_TEMP, (int)temp);
       }
+#if 0
       // calculate motion
       float motion = 0;
       for (byte i = 0; i < 3; i++) {
@@ -395,6 +396,7 @@ void processMEMS(CBuffer* buffer)
         Serial.print("Motion:");
         Serial.println(motion);
       }
+#endif
     }
     accSum[0] = 0;
     accSum[1] = 0;
@@ -461,9 +463,9 @@ void initialize()
 #endif
 
 #if ENABLE_GPS
-  // start serial communication with GPS receiver
+  // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
       state.set(STATE_GPS_READY);
       Serial.println("GNSS:OK");
 #if ENABLE_OLED
@@ -684,8 +686,8 @@ void showStats()
 
 bool waitMotion(long timeout)
 {
-  unsigned long t = millis();
 #if ENABLE_MEMS
+  unsigned long t = millis();
   if (state.check(STATE_MEMS_READY)) {
     do {
       serverProcess(100);
@@ -752,7 +754,7 @@ void process()
 #endif
 
 #if ENABLE_OBD
-  if (sys.version > 12) {
+  if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
   } else {
     batteryVoltage = obd.getVoltage() * 100;
@@ -936,6 +938,15 @@ void telemetry(void* inst)
       state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
       teleClient.reset();
 
+#if ENABLE_GPS
+      if (state.check(STATE_GPS_READY)) {
+        Serial.println("GNSS OFF");
+        sys.gpsEnd();
+        state.clear(STATE_GPS_READY);
+      }
+      gd = 0;
+#endif
+
       uint32_t t = millis();
       do {
         delay(1000);
@@ -943,6 +954,16 @@ void telemetry(void* inst)
       if (state.check(STATE_STANDBY)) {
         // start ping
         Serial.print("Ping...");
+#if ENABLE_GPS
+        if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
+          state.set(STATE_GPS_READY);
+          for (uint32_t t = millis(); millis() - t < 120000; ) {
+            if (sys.gpsGetData(&gd)) {
+              break;
+            }
+          }
+        }
+#endif
 #if NET_DEVICE == NET_WIFI
         if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) {
           Serial.println("No WiFi");
@@ -1077,14 +1098,7 @@ void standby()
     logger.end();
   }
 #endif
-#if ENABLE_GPS
-  if (state.check(STATE_GPS_READY)) {
-    Serial.println("GNSS OFF");
-    sys.gpsEnd();
-  }
-  gd = 0;
-#endif
-  state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_STORAGE_READY);
+  state.clear(STATE_OBD_READY | STATE_STORAGE_READY);
   state.set(STATE_STANDBY);
   // this will put co-processor into a delayed sleep
   sys.resetLink();
@@ -1145,7 +1159,7 @@ void showSysInfo()
 {
   Serial.print("CPU:");
   Serial.print(ESP.getCpuFreqMHz());
-  Serial.print("MHz Flash:");
+  Serial.print("MHz FLASH:");
   Serial.print(getFlashSize() >> 10);
   Serial.println("MB");
 #ifdef BOARD_HAS_PSRAM
@@ -1276,8 +1290,8 @@ void setup()
     showSysInfo();
 
     if (sys.begin()) {
-      Serial.print("Firmware:R");
-      Serial.println(sys.version);
+      Serial.print("TYPE:");
+      Serial.println(sys.devType);
     }
 
 #if ENABLE_OBD
@@ -1333,6 +1347,11 @@ void setup()
     initialize();
 
     digitalWrite(PIN_LED, LOW);
+
+    pinMode(26, OUTPUT);
+    pinMode(34, INPUT);
+    pinMode(PIN_GPS_POWER, OUTPUT);
+    digitalWrite(PIN_GPS_POWER, HIGH);
 }
 
 void loop()
@@ -1362,4 +1381,6 @@ void loop()
       serialCommand += c;
     }
   }
+
+  digitalWrite(26, digitalRead(34));
 }
